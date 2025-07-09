@@ -266,12 +266,21 @@ body {
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
         }
 
-        .result-card.error {
-  border-color: #ff6b6b;
-  background: rgba(255, 107, 107, 0.1);
+        /* Success Result Styling */
+.result-container {
+  margin-top: 2rem;
+  overflow: hidden;
 }
 
+.result-card {
+  background: rgba(26, 26, 26, 0.9);
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-top: 1rem;
+}
 
+/* Error Message Styling */
 .error-message {
   color: #ff6b6b;
   padding: 1rem;
@@ -280,6 +289,12 @@ body {
   border-left: 3px solid #ff6b6b;
   border-radius: 4px;
 }
+
+        .result-card.error {
+  border-color: #ff6b6b;
+  background: rgba(255, 107, 107, 0.1);
+}
+
 
 .btn:disabled {
   background: #cccccc;
