@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { FaSearch, FaChair } from 'react-icons/fa';
 import { motion } from 'framer-motion';
 import Header from './Header';
-import { getDB } from '../utils/db'; // Make sure this exists
+import { getAttendees, getTables } from '../utils/api';
 
 export default function Verification() {
   const [attendeeId, setAttendeeId] = useState('');
@@ -12,65 +12,66 @@ export default function Verification() {
   const [db, setDb] = useState({ attendees: [], tables: [] });
 
   // Load database on component mount
-  useEffect(() => {
+   useEffect(() => {
+    let isMounted = true;
+    
     const loadDatabase = async () => {
       try {
-        const database = await getDB();
-        setDb(database);
+        const [attendees, tables] = await Promise.all([
+          getAttendees(true),
+          getTables()
+        ]);
+        if (isMounted) {
+          setDb({ attendees, tables });
+        }
       } catch (err) {
-        console.error("Failed to load database:", err);
-        setError("Failed to load database. Please refresh the page.");
+        if (isMounted) {
+          console.error("Failed to load database:", err);
+          setError("Failed to connect to server. Please check your connection and try again.");
+        }
       }
     };
+
     loadDatabase();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
+
   const handleVerify = () => {
-    // Reset previous states
     setError(null);
     setResult(null);
     setIsLoading(true);
 
     try {
-      // Basic validation
       if (!attendeeId.trim()) {
         throw new Error('Please enter a registration number');
       }
 
       const registrationNumber = attendeeId.trim().toUpperCase();
-
-      // Find attendee in database
-      const attendee = db.attendees.find(
-        a => a.id === registrationNumber && a.assigned
-      );
+      const attendee = db.attendees.find(a => a.id === registrationNumber);
 
       if (!attendee) {
         throw new Error('Registration number not found or not assigned to any table');
       }
 
-      // Find attendee's table
       const table = db.tables.find(t => t.id === attendee.tableId);
       if (!table) {
         throw new Error('Table assignment not found');
       }
 
-      // Find all members at this table
-      const tableMembers = db.attendees.filter(
-        a => a.tableId === attendee.tableId && a.assigned
-      );
+      const tableMembers = db.attendees.filter(a => a.tableId === attendee.tableId);
 
-      // Format successful result
-      const verificationResult = {
+      setResult({
         tableName: table.name,
         attendeeName: attendee.name,
         members: tableMembers.map(member => ({
           id: member.id,
           name: member.name
         }))
-      };
-
-      // Set the result state
-      setResult(verificationResult);
+      });
     } catch (err) {
       setError(err.message);
     } finally {

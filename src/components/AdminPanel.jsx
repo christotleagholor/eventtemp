@@ -10,12 +10,14 @@ import {
   FaTimes, FaPlus, FaSyncAlt, FaFileImport, FaFileExport, FaUndo 
 } from 'react-icons/fa';
 import { motion } from 'framer-motion';
-import { getDB, saveDB, exportDB, resetDB } from '../utils/db';
-import Header from './Header'
+import { 
+  getAttendees, getTables, assignAttendee, 
+  unassignAttendee, moveAttendee, resetAttendees,
+  initializeDB
+} from '../utils/api';
+import Header from './Header';
 
 export default function AdminPanel({ returnToPublic }) {
-  // State management
-  const [importKey, setImportKey] = useState(Date.now());
   const [formData, setFormData] = useState({
     name: '',
     attendeeId: '',
@@ -35,8 +37,7 @@ export default function AdminPanel({ returnToPublic }) {
     newTableId: ''
   });
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
-
-  const db = getDB();
+  const [isInitializing, setIsInitializing] = useState(false);
 
   // Load initial data
   useEffect(() => {
@@ -44,51 +45,58 @@ export default function AdminPanel({ returnToPublic }) {
       try {
         await loadData();
       } catch (error) {
-        console.error('Initialization error:', error);
         showSnackbar('Initialization error - please refresh', 'error');
       }
     };
     initialize();
   }, []);
 
-  const loadData = useCallback(() => {
+  const loadData = useCallback(async () => {
     try {
-      const currentDB = getDB(); // Always get fresh DB state
-      setTables([...currentDB.tables]);
-      setAttendees(currentDB.attendees.filter(a => a.assigned));
+      const [attendeesData, tablesData] = await Promise.all([
+        getAttendees(true), // Only assigned attendees
+        getTables()
+      ]);
+      setTables(tablesData);
+      setAttendees(attendeesData);
     } catch (error) {
-      console.error('Load error:', error);
       showSnackbar('Failed to load data', 'error');
-      throw error;
+      console.error('Load error:', error);
     }
   }, []);
 
-  // ID Generation
-  const generateId = useCallback(() => {
-    const currentDB = getDB();
-    let nextId = null;
-    
-    // First try to find a gap in 1-350 range
-    for (let i = 1; i <= 350; i++) {
-      const idNum = i.toString().padStart(6, '0');
-      const testId = `CHI-IHE${idNum}`;
-      if (!currentDB.attendees.some(a => a.id === testId && a.assigned)) {
-        nextId = testId;
-        break;
+  const generateId = useCallback(async () => {
+    try {
+      const allAttendees = await getAttendees();
+      let nextId = null;
+      
+      // First try to find a gap in 1-350 range
+      for (let i = 1; i <= 350; i++) {
+        const idNum = i.toString().padStart(6, '0');
+        const testId = `CHI-IHE${idNum}`;
+        if (!allAttendees.some(a => a.id === testId && a.assigned)) {
+          nextId = testId;
+          break;
+        }
       }
+      
+      // If no gap found, use sequential
+      if (!nextId) {
+        const lastAssigned = allAttendees
+          .filter(a => a.assigned)
+          .sort((a, b) => b.id.localeCompare(a.id))[0];
+        
+        const lastNum = lastAssigned ? parseInt(lastAssigned.id.slice(-6)) : 350;
+        nextId = `CHI-IHE${(lastNum + 1).toString().padStart(6, '0')}`;
+      }
+      
+      setFormData(prev => ({ ...prev, attendeeId: nextId }));
+    } catch (error) {
+      showSnackbar('Failed to generate ID', 'error');
+      console.error('ID generation error:', error);
     }
-    
-    // If no gap found, use sequential
-    if (!nextId) {
-      currentDB.lastId = currentDB.lastId >= 350 ? currentDB.lastId : 350;
-      currentDB.lastId++;
-      nextId = `CHI-IHE${currentDB.lastId.toString().padStart(6, '0')}`;
-    }
-    
-    setFormData(prev => ({ ...prev, attendeeId: nextId }));
   }, []);
 
-  // Assignment function
   const assignToTable = async () => {
     try {
       const { name, attendeeId, tableId } = formData;
@@ -98,19 +106,7 @@ export default function AdminPanel({ returnToPublic }) {
         return;
       }
 
-      const currentDB = getDB();
-      let attendee = currentDB.attendees.find(a => a.id === attendeeId);
-      
-      if (!attendee) {
-        attendee = { id: attendeeId, name, tableId, assigned: true };
-        currentDB.attendees.push(attendee);
-      } else {
-        attendee.name = name;
-        attendee.tableId = tableId;
-        attendee.assigned = true;
-      }
-      
-      saveDB();
+      await assignAttendee(attendeeId, name, tableId);
       showSnackbar(`${name} assigned to table successfully!`, 'success');
       setFormData({ name: '', attendeeId: '', tableId: '' });
       loadData();
@@ -120,23 +116,63 @@ export default function AdminPanel({ returnToPublic }) {
     }
   };
 
-  // Remove attendee
-  const removeAttendee = (id) => {
+  const removeAttendee = async (attendeeId) => {
+  console.log(`Attempting to remove attendee: ${attendeeId}`);
+  try {
+    const response = await unassignAttendee(attendeeId);
+    console.log('Unassign response:', response);
+    
+    showSnackbar(response.message || 'Attendee unassigned successfully', 'success');
+    loadData();
+  } catch (error) {
+    console.error('Remove attendee failed:', error);
+    showSnackbar(
+      error.message || 'Failed to unassign attendee. Please try again.', 
+      'error'
+    );
+  }
+};
+
+  const handleMoveAttendee = async () => {
     try {
-      const currentDB = getDB();
-      const attendee = currentDB.attendees.find(a => a.id === id);
-      if (attendee) {
-        attendee.assigned = false;
-        attendee.tableId = '';
-        saveDB();
-        loadData();
-        showSnackbar(`${attendee.name || 'Attendee'} removed`, 'info');
-      } else {
-        showSnackbar('Attendee not found', 'error');
-      }
+      const { attendeeId, newTableId } = moveDialog;
+      if (!newTableId) return;
+      
+      await moveAttendee(attendeeId, newTableId);
+      showSnackbar('Attendee moved successfully', 'success');
+      loadData();
     } catch (error) {
-      showSnackbar('Failed to remove attendee', 'error');
-      console.error('Remove error:', error);
+      showSnackbar('Failed to move attendee', 'error');
+      console.error('Move error:', error);
+    } finally {
+      closeMoveDialog();
+    }
+  };
+
+   const handleReset = async () => {
+    try {
+      await resetAttendees();
+      showSnackbar('Database reset to initial state', 'warning');
+      loadData();
+    } catch (error) {
+      showSnackbar('Reset failed', 'error');
+      console.error('Reset error:', error);
+    } finally {
+      setResetConfirmOpen(false);
+    }
+  };
+
+  const handleInitializeDB = async () => {
+    setIsInitializing(true);
+    try {
+      await initializeDB();
+      showSnackbar('Database initialized successfully', 'success');
+      loadData();
+    } catch (error) {
+      showSnackbar('Initialization failed', 'error');
+      console.error('Initialization error:', error);
+    } finally {
+      setIsInitializing(false);
     }
   };
 
@@ -159,32 +195,7 @@ export default function AdminPanel({ returnToPublic }) {
     });
   };
 
-  const handleMoveAttendee = () => {
-    try {
-      const { attendeeId, newTableId } = moveDialog;
-      if (!newTableId) return;
-      
-      const currentDB = getDB();
-      const attendee = currentDB.attendees.find(a => a.id === attendeeId);
-      const tableExists = currentDB.tables.some(t => t.id === newTableId);
-      
-      if (attendee && tableExists) {
-        attendee.tableId = newTableId;
-        saveDB();
-        loadData();
-        showSnackbar('Attendee moved successfully', 'success');
-      } else {
-        showSnackbar(!tableExists ? 'Invalid table ID' : 'Attendee not found', 'error');
-      }
-    } catch (error) {
-      showSnackbar('Failed to move attendee', 'error');
-      console.error('Move error:', error);
-    } finally {
-      closeMoveDialog();
-    }
-  };
-
-  // Data management functions
+    // Data management functions
   const handleExport = () => {
     try {
       const url = exportDB();
@@ -231,11 +242,7 @@ export default function AdminPanel({ returnToPublic }) {
     reader.readAsText(file);
   };
 
-  const handleReset = () => {
-    setResetConfirmOpen(true);
-  };
-
-  const confirmReset = () => {
+ const confirmReset = () => {
     try {
       resetDB();
       loadData();
@@ -277,41 +284,27 @@ export default function AdminPanel({ returnToPublic }) {
         </Button>
       </Box>
 
-      {/* Database Management Controls */}
-      <Paper elevation={1} sx={{ p: 2, mb: 3, display: 'flex', gap: 2 }}>
-        <Button
-          variant="outlined"
-          component="label"
-          startIcon={<FaFileImport />}
-        >
-          Import DB
-          <input 
-            type="file" 
-            hidden 
-            accept=".json" 
-            onChange={handleImport}
-            key={importKey}
-          />
-        </Button>
-        
-        <Button
-          variant="outlined"
-          startIcon={<FaFileExport />}
-          onClick={handleExport}
-        >
-          Export DB
-        </Button>
-        
-        <Button
-          variant="outlined"
-          color="error"
-          startIcon={<FaUndo />}
-          onClick={handleReset}
-          sx={{ ml: 'auto' }}
-        >
-          Reset DB
-        </Button>
-      </Paper>
+       {/* Database Management Controls */}
+          <Paper elevation={1} sx={{ p: 2, mb: 3, display: 'flex', gap: 2 }}>
+            <Button
+              variant="outlined"
+              startIcon={<FaUndo />}
+              onClick={handleInitializeDB}
+              disabled={isInitializing}
+            >
+              {isInitializing ? 'Initializing...' : 'Initialize DB'}
+            </Button>
+            
+            <Button
+              variant="outlined"
+              color="error"
+              startIcon={<FaUndo />}
+              onClick={() => setResetConfirmOpen(true)}
+              sx={{ ml: 'auto' }}
+            >
+              Reset DB
+            </Button>
+          </Paper>
 
       {/* Assignment Form */}
       <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
