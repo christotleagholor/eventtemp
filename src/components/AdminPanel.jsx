@@ -284,27 +284,7 @@ export default function AdminPanel({ returnToPublic }) {
         </Button>
       </Box>
 
-       {/* Database Management Controls */}
-          <Paper elevation={1} sx={{ p: 2, mb: 3, display: 'flex', gap: 2 }}>
-            <Button
-              variant="outlined"
-              startIcon={<FaUndo />}
-              onClick={handleInitializeDB}
-              disabled={isInitializing}
-            >
-              {isInitializing ? 'Initializing...' : 'Initialize DB'}
-            </Button>
-            
-            <Button
-              variant="outlined"
-              color="error"
-              startIcon={<FaUndo />}
-              onClick={() => setResetConfirmOpen(true)}
-              sx={{ ml: 'auto' }}
-            >
-              Reset DB
-            </Button>
-          </Paper>
+       
 
       {/* Assignment Form */}
       <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
