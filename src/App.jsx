@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { motion } from 'framer-motion'
 //import Header from './components/Header'
 import Verification from './components/Verification'
@@ -7,8 +7,36 @@ import Sponsors from './components/Sponsors'
 import Footer from './components/Footer'
 import Confetti from './components/Confetti'
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("Error caught by boundary:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: 20, color: 'red' }}>
+          <h2>Something went wrong</h2>
+          <p>Check the console for details</p>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   const [isAdmin, setIsAdmin] = useState(false)
+  
   
   return (
     <div className="app">
@@ -16,11 +44,13 @@ export default function App() {
      
       
       <main className="container">
-        {isAdmin ? (
-          <AdminPanel returnToPublic={() => setIsAdmin(false)} />
-        ) : (
-          <Verification />
-        )}
+        <ErrorBoundary>
+  {isAdmin ? (
+    <AdminPanel returnToPublic={() => setIsAdmin(false)} />
+  ) : (
+    <Verification />
+  )}
+</ErrorBoundary>
         
         <Sponsors />
       </main>
