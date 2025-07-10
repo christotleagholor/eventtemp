@@ -38,9 +38,25 @@ const initialData = {
 // Current DB state
 let db = JSON.parse(JSON.stringify(initialData));
 
+// Safe localStorage access
+const getLocalStorage = () => {
+  try {
+    // Check if we're running in a browser environment
+    if (typeof window !== 'undefined' && window.localStorage) {
+      return window.localStorage;
+    }
+    return null;
+  } catch (e) {
+    return null;
+  }
+};
+
 // Initialize from localStorage
 const initializeDB = () => {
-  const savedData = localStorage.getItem('goldenJubileeDB');
+  const storage = getLocalStorage();
+  if (!storage) return; // Skip if no localStorage available
+
+  const savedData = storage.getItem('goldenJubileeDB');
   if (savedData) {
     try {
       const parsed = JSON.parse(savedData);
@@ -56,19 +72,34 @@ const initializeDB = () => {
   }
 };
 
-// Initialize immediately
-initializeDB();
+// Don't initialize immediately - wait for first usage
+let initialized = false;
+const ensureInitialized = () => {
+  if (!initialized) {
+    initializeDB();
+    initialized = true;
+  }
+};
 
 // Public API
-export const getDB = () => db;
-export const saveDB = () => {
-  localStorage.setItem('goldenJubileeDB', JSON.stringify(db));
+export const getDB = () => {
+  ensureInitialized();
+  return db;
 };
+
+export const saveDB = () => {
+  const storage = getLocalStorage();
+  if (storage) {
+    storage.setItem('goldenJubileeDB', JSON.stringify(db));
+  }
+};
+
 export const resetDB = () => {
   db = JSON.parse(JSON.stringify(initialData));
   saveDB();
   return db;
 };
+
 export const exportDB = () => {
   const dataStr = JSON.stringify(db, null, 2);
   return new Blob([dataStr], { type: 'application/json' });

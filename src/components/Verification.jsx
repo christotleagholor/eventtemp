@@ -1,18 +1,34 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { FaSearch, FaChair } from 'react-icons/fa';
 import { motion } from 'framer-motion';
 import Header from './Header';
-import { getDB } from '../utils/db'; // Make sure this import exists
+import { getDB } from '../utils/db'; // Make sure this exists
 
 export default function Verification() {
   const [attendeeId, setAttendeeId] = useState('');
   const [result, setResult] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [db, setDb] = useState({ attendees: [], tables: [] });
+
+  // Load database on component mount
+  useEffect(() => {
+    const loadDatabase = async () => {
+      try {
+        const database = await getDB();
+        setDb(database);
+      } catch (err) {
+        console.error("Failed to load database:", err);
+        setError("Failed to load database. Please refresh the page.");
+      }
+    };
+    loadDatabase();
+  }, []);
 
   const handleVerify = () => {
     // Reset previous states
     setError(null);
+    setResult(null);
     setIsLoading(true);
 
     try {
@@ -21,42 +37,42 @@ export default function Verification() {
         throw new Error('Please enter a registration number');
       }
 
-      // Get database
-      const db = getDB();
-      
-      // Find attendee
+      const registrationNumber = attendeeId.trim().toUpperCase();
+
+      // Find attendee in database
       const attendee = db.attendees.find(
-        a => a.id === attendeeId.trim().toUpperCase() && a.assigned
+        a => a.id === registrationNumber && a.assigned
       );
 
       if (!attendee) {
-        throw new Error('Registration number not found');
+        throw new Error('Registration number not found or not assigned to any table');
       }
 
-      // Find table
+      // Find attendee's table
       const table = db.tables.find(t => t.id === attendee.tableId);
       if (!table) {
         throw new Error('Table assignment not found');
       }
 
-      // Find table members
-      const members = db.attendees
-        .filter(a => a.tableId === table.id && a.assigned)
-        .map(member => ({
-          id: member.id,
-          name: member.name
-        }));
+      // Find all members at this table
+      const tableMembers = db.attendees.filter(
+        a => a.tableId === attendee.tableId && a.assigned
+      );
 
-      // Set successful result
-      setResult({
+      // Format successful result
+      const verificationResult = {
         tableName: table.name,
         attendeeName: attendee.name,
-        members
-      });
+        members: tableMembers.map(member => ({
+          id: member.id,
+          name: member.name
+        }))
+      };
 
+      // Set the result state
+      setResult(verificationResult);
     } catch (err) {
       setError(err.message);
-      setResult(null);
     } finally {
       setIsLoading(false);
     }
@@ -107,16 +123,14 @@ export default function Verification() {
               {isLoading ? 'Searching...' : 'Find My Table'}
             </button>
             
+            {/* Error Message */}
             {error && (
-              <motion.div
-                className="error-message"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-              >
+              <div className="error-message">
                 {error}
-              </motion.div>
+              </div>
             )}
 
+            {/* Success Result */}
             {result && (
               <motion.div 
                 className="result-container"
