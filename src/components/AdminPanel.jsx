@@ -306,7 +306,10 @@ export default function AdminPanel({ returnToPublic }) {
             onChange={(e) => setFormData({ ...formData, attendeeId: e.target.value })}
             disabled={!!formData.attendeeId}
           />
-          <Button 
+          
+        </Box>
+
+        <Button 
             variant="contained" 
             onClick={generateId}
             startIcon={<FaPlus />}
@@ -314,7 +317,6 @@ export default function AdminPanel({ returnToPublic }) {
           >
             Generate ID
           </Button>
-        </Box>
         
         <Select
           fullWidth
